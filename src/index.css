@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Lexend", sans-serif;
+  --font-body: "Public Sans", sans-serif;
+  --font-label: "Public Sans", sans-serif;
+
+  --color-surface-bright: #faf8ff;
+  --color-surface-container-highest: #e3e2e9;
+  --color-surface: #faf8ff;
+  --color-on-tertiary-fixed: #001c39;
+  --color-primary-fixed-dim: #b3c5ff;
+  --color-on-tertiary-fixed-variant: #004883;
+  --color-outline: #747683;
+  --color-inverse-on-surface: #f1f0f8;
+  --color-tertiary-container: #186ebf;
+  --color-secondary-container: #93f2cd;
+  --color-secondary: #006c50;
+  --color-surface-variant: #e3e2e9;
+  --color-on-surface-variant: #444651;
+  --color-secondary-fixed: #96f5cf;
+  --color-primary-fixed: #dbe1ff;
+  --color-on-error-container: #93000a;
+  --color-on-primary-fixed: #00174a;
+  --color-surface-container-high: #e8e7ef;
+  --color-surface-container-low: #f4f3fa;
+  --color-on-secondary-container: #007054;
+  --color-on-primary-fixed-variant: #1e4194;
+  --color-background: #faf8ff;
+  --color-on-error: #ffffff;
+  --color-on-surface: #1a1b21;
+  --color-error: #ba1a1a;
+  --color-surface-dim: #dad9e1;
+  --color-on-primary: #ffffff;
+  --color-on-secondary-fixed-variant: #00513c;
+  --color-error-container: #ffdad6;
+  --color-tertiary: #00559b;
+  --color-primary-container: #4a69bd;
+  --color-surface-tint: #3a5aad;
+  --color-surface-container-lowest: #ffffff;
+  --color-tertiary-fixed-dim: #a4c9ff;
+  --color-primary: #2f50a3;
+  --color-inverse-surface: #2f3036;
+  --color-secondary-fixed-dim: #7ad8b4;
+  --color-outline-variant: #c4c6d3;
+  --color-surface-container: #eeedf5;
+  --color-on-primary-container: #edefff;
+  --color-on-tertiary-container: #e9f0ff;
+  --color-on-secondary-fixed: #002116;
+  --color-on-secondary: #ffffff;
+  --color-inverse-primary: #b3c5ff;
+  --color-tertiary-fixed: #d4e3ff;
+  --color-on-background: #1a1b21;
+  --color-on-tertiary: #ffffff;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-on-surface font-body;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-headline;
+  }
+}
+
+.font-lexend { font-family: var(--font-headline); }
+.font-body { font-family: var(--font-body); }
+

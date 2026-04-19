@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (
+               (request.auth.token.email == "ricardoperazza1973@gmail.com" && request.auth.token.email_verified == true) ||
+               (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+             );
+    }
+
+    function isLinked(targetUserId) {
+      return isAuthenticated() && 
+             targetUserId != request.auth.uid && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             (
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.linkedSeniorId == targetUserId ||
+               (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'caregiver' && 
+                'linkedFamilyUids' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.linkedFamilyUids is list &&
+                targetUserId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.linkedFamilyUids)
+             );
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return (!('uid' in data) || data.uid is string) &&
+             (!('name' in data) || (data.name is string && data.name.size() > 0 && data.name.size() < 100)) &&
+             (!('role' in data) || data.role in ['caregiver', 'family', 'admin']) &&
+             (!('pairingCode' in data) || data.pairingCode == null || (data.pairingCode is string && data.pairingCode.size() == 6)) &&
+             (!('linkedFamilyUids' in data) || (data.linkedFamilyUids is list && data.linkedFamilyUids.size() <= 2)) &&
+             (!('email' in data) || (data.email is string && data.email.size() < 100));
+    }
+
+    function isValidMedication(data) {
+      return (!('name' in data) || (data.name is string && data.name.size() > 0)) &&
+             (!('status' in data) || data.status in ['pending', 'completed', 'skipped']);
+    }
+
+    function isValidVital(data) {
+      return (!('type' in data) || data.type in ['bp', 'heart', 'oxygen', 'temp', 'weight', 'glucose']) &&
+             (!('value' in data) || data.value is string);
+    }
+
+    function isValidAppointment(data) {
+      return (!('doctor' in data) || data.doctor is string) &&
+             (!('specialty' in data) || data.specialty is string) &&
+             (!('time' in data) || data.time is string);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin() || isLinked(userId);
+      
+      allow list: if isAuthenticated() && (
+        isAdmin() || 
+        resource.data.pairingCode != null
+      );
+      
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || 
+                    (isAuthenticated() && 
+                     resource.data.role == 'family' && 
+                     resource.data.pairingCode != null &&
+                     request.resource.data.pairingCode == resource.data.pairingCode &&
+                     request.resource.data.linkedSeniorId == request.auth.uid &&
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedSeniorId'])) ||
+                    (isLinked(userId) && 
+                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedFamilyUids'])) ||
+                    isAdmin();
+      
+      match /medications/{medId} {
+        allow read: if isOwner(userId) || isLinked(userId) || isAdmin();
+        allow create: if (isOwner(userId) && isValidMedication(request.resource.data)) || isAdmin();
+        allow update: if (isOwner(userId) && isValidMedication(request.resource.data)) || 
+                        (isLinked(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['inventoryCount'])) ||
+                        isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+      
+      match /vitals/{vitalId} {
+        allow read: if isOwner(userId) || isLinked(userId) || isAdmin();
+        allow create, update: if (isOwner(userId) && isValidVital(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+      
+      match /appointments/{apptId} {
+        allow read: if isOwner(userId) || isLinked(userId) || isAdmin();
+        allow create, update: if (isOwner(userId) && isValidAppointment(request.resource.data)) || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+      
+      match /geofence/{docId} {
+        allow read: if isOwner(userId) || isLinked(userId) || isAdmin();
+        allow create, delete: if isOwner(userId) || isAdmin();
+        allow update: if isOwner(userId) || 
+                        (isLinked(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['medsReplenishmentRequested'])) ||
+                        isAdmin();
+      }
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

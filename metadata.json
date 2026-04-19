@@ -1,0 +1,8 @@
+{
+  "name": "SeniorTrack",
+  "description": "A comprehensive health and safety tracking app for seniors, caregivers, and family members with real-time vitals, medication management, and geofencing alerts.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": []
+}
