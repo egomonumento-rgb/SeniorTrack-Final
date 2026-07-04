@@ -5,7 +5,7 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { VitalSign, VitalType } from '../types';
 import { checkVitalAlert } from '../lib/vitalsHelper';
 import { Activity, Heart, Thermometer, Weight, Droplets, Wind, Plus, CheckCircle2, Clock, Moon, AlertTriangle } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
 
 export const Vitals: React.FC = () => {
