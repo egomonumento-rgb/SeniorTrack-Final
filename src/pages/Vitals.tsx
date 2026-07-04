@@ -21,7 +21,7 @@ export const Vitals: React.FC = () => {
 
     const seniorId = profile.role === 'family' && profile.linkedSeniorId ? profile.linkedSeniorId : user.uid;
 
-    const vitalsQuery = query(collection(db, `users/${seniorId}/vitals`), orderBy('timestamp', 'desc'), limit(20));
+    const vitalsQuery = query(collection(db, `users/${seniorId}/vitals`), orderBy('timestamp', 'desc'), limit(50));
     const unsubVitals = onSnapshot(vitalsQuery, (snap) => {
       setVitals(snap.docs.map(d => ({ id: d.id, ...d.data() } as VitalSign)));
     }, (error) => {
@@ -33,15 +33,42 @@ export const Vitals: React.FC = () => {
     };
   }, [user, profile]);
 
+  // Helper para obtener la última lectura de un tipo específico de signo vital
+  const getLatestVital = (type: VitalType) => {
+    return vitals.find(v => v.type === type);
+  };
+
+  // Extraemos las últimas lecturas reales o dejamos los valores por defecto si no hay registros
+  const latestBP = getLatestVital('bp');
+  const latestHeart = getLatestVital('heart');
+  const latestOxygen = getLatestVital('oxygen');
+  const latestTemp = getLatestVital('temp');
+  const latestWeight = getLatestVital('weight');
+  const latestGlucose = getLatestVital('glucose');
+  const latestSleep = getLatestVital('sleep');
+
   const handleAddVital = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !profile || profile.role === 'family') return;
 
     try {
       const alertStatus = checkVitalAlert(newVital.type, newVital.value);
-      const timestamp = newVital.date && newVital.time 
-        ? Timestamp.fromDate(new Date(`${newVital.date}T${newVital.time}`))
-        : serverTimestamp();
+      
+      // Corrección para evitar desfases de fechas en hora local al procesar inputs nativos
+      let timestamp;
+      if (newVital.date && newVital.time) {
+        const [yearStr, monthStr, dayStr] = newVital.date.split('-');
+        const [hourStr, minStr] = newVital.time.split(':');
+        timestamp = Timestamp.fromDate(new Date(
+          parseInt(yearStr),
+          parseInt(monthStr) - 1,
+          parseInt(dayStr),
+          parseInt(hourStr),
+          parseInt(minStr)
+        ));
+      } else {
+        timestamp = serverTimestamp();
+      }
 
       await addDoc(collection(db, `users/${user.uid}/vitals`), {
         type: newVital.type,
@@ -59,10 +86,12 @@ export const Vitals: React.FC = () => {
   };
 
   const chartData = vitals.length > 0 
-    ? vitals.filter(v => v.type === 'bp').map(v => ({ 
+    ? vitals.filter(v => v.type === 'bp').slice(0, 5).map(v => ({ 
         id: v.id,
-        name: new Date(v.timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 
-        value: parseInt(v.value.split('/')[0]) 
+        name: v.timestamp?.seconds 
+          ? new Date(v.timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : 'Ahora', 
+        value: parseInt(v.value.split('/')[0]) || 120 
       })).reverse()
     : [
         { id: '1', name: '8 AM', value: 110 },
@@ -85,6 +114,7 @@ export const Vitals: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Presión Arterial */}
         <div className="md:col-span-8 bg-surface-container-low rounded-[2rem] p-5 md:p-8 flex flex-col justify-between min-h-[280px] md:min-h-[350px] relative overflow-hidden group border border-outline-variant/10 shadow-sm">
           <div className="flex justify-between items-start mb-2 md:mb-8 relative z-10">
             <div>
@@ -93,12 +123,18 @@ export const Vitals: React.FC = () => {
                 <span className="font-lexend font-bold text-[9px] md:text-xs uppercase tracking-widest">Presión Arterial</span>
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="font-lexend font-black text-4xl md:text-6xl tracking-tighter">118/75</span>
+                <span className="font-lexend font-black text-4xl md:text-6xl tracking-tighter">
+                  {latestBP ? latestBP.value : '118/75'}
+                </span>
                 <span className="text-on-surface-variant font-medium text-xs md:text-lg">mmHg</span>
               </div>
             </div>
-            <div className="bg-secondary-container text-on-secondary-container px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[9px] md:text-xs font-black uppercase tracking-widest shadow-sm">
-              Normal
+            <div className={`px-3 py-1 md:px-4 md:py-1.5 rounded-full text-[9px] md:text-xs font-black uppercase tracking-widest shadow-sm transition-colors ${
+              latestBP?.isAlert 
+                ? 'bg-error text-white animate-pulse' 
+                : 'bg-secondary-container text-on-secondary-container'
+            }`}>
+              {latestBP?.isAlert ? 'Alerta' : 'Normal'}
             </div>
           </div>
           
@@ -125,14 +161,21 @@ export const Vitals: React.FC = () => {
           <div className="absolute -right-20 -top-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000" />
         </div>
 
-        <div className="md:col-span-4 bg-tertiary-container text-on-tertiary-container rounded-[2rem] p-6 md:p-8 flex flex-col justify-between relative overflow-hidden group shadow-lg">
+        {/* Pulso Card Dinámica */}
+        <div className={`rounded-[2rem] p-6 md:p-8 flex flex-col justify-between relative overflow-hidden group shadow-lg md:col-span-4 transition-colors duration-500 ${
+          latestHeart?.isAlert 
+            ? 'bg-error text-white animate-pulse' 
+            : 'bg-tertiary-container text-on-tertiary-container'
+        }`}>
           <div className="relative z-10">
-            <div className="flex items-center gap-2 text-on-tertiary mb-4 md:mb-8">
+            <div className="flex items-center gap-2 mb-4 md:mb-8 opacity-80">
               <Heart className="w-6 h-6 fill-current" />
-              <span className="font-lexend font-bold text-[10px] md:text-xs uppercase tracking-widest opacity-80">Pulso</span>
+              <span className="font-lexend font-bold text-[10px] md:text-xs uppercase tracking-widest">Pulso</span>
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="font-lexend font-black text-6xl md:text-7xl tracking-tighter">72</span>
+              <span className="font-lexend font-black text-6xl md:text-7xl tracking-tighter">
+                {latestHeart ? latestHeart.value : '72'}
+              </span>
               <span className="font-medium text-lg md:text-xl opacity-60">LPM</span>
             </div>
           </div>
@@ -144,7 +187,7 @@ export const Vitals: React.FC = () => {
             <div className="h-2 w-full bg-white/20 rounded-full overflow-hidden">
               <motion.div 
                 initial={{ width: 0 }}
-                animate={{ width: '70%' }}
+                animate={{ width: latestHeart ? `${Math.min(Math.max((parseInt(latestHeart.value) / 120) * 100, 20), 100)}%` : '70%' }}
                 transition={{ duration: 1, ease: "easeOut" }}
                 className="h-full bg-white rounded-full" 
               />
@@ -153,34 +196,55 @@ export const Vitals: React.FC = () => {
           <div className="absolute -left-10 -bottom-10 w-40 h-40 bg-white/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-1000" />
         </div>
 
-        <div className="md:col-span-4 bg-surface-container-highest rounded-[2rem] p-6 md:p-8 flex flex-col justify-between border border-outline-variant/10 shadow-sm">
+        {/* Oxígeno Card Dinámica */}
+        <div className={`md:col-span-4 bg-surface-container-highest rounded-[2rem] p-6 md:p-8 flex flex-col justify-between border shadow-sm transition-all duration-500 ${
+          latestOxygen?.isAlert ? 'border-error ring-2 ring-error/20 bg-error/5' : 'border-outline-variant/10'
+        }`}>
           <div>
-            <div className="flex items-center gap-2 text-secondary mb-4 md:mb-6">
+            <div className={`flex items-center gap-2 mb-4 md:mb-6 ${latestOxygen?.isAlert ? 'text-error' : 'text-secondary'}`}>
               <Wind className="w-6 h-6" />
               <span className="font-lexend font-bold text-[10px] md:text-xs uppercase tracking-widest">Oxígeno</span>
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="font-lexend font-black text-5xl md:text-6xl tracking-tighter text-on-surface">98</span>
+              <span className="font-lexend font-black text-5xl md:text-6xl tracking-tighter text-on-surface">
+                {latestOxygen ? latestOxygen.value : '98'}
+              </span>
               <span className="text-on-surface-variant font-medium text-lg md:text-xl">%</span>
             </div>
           </div>
-          <div className="mt-6 md:mt-8 p-4 bg-secondary-container/30 rounded-2xl flex items-center gap-3 border border-secondary/10">
-            <CheckCircle2 className="text-secondary w-5 h-5 md:w-6 md:h-6" />
-            <span className="text-on-secondary-container text-[10px] md:text-xs font-black uppercase tracking-widest">Nivel Excelente</span>
+          <div className={`mt-6 md:mt-8 p-4 rounded-2xl flex items-center gap-3 border ${
+            latestOxygen?.isAlert 
+              ? 'bg-error/10 border-error/20 text-error' 
+              : 'bg-secondary-container/30 border-secondary/10 text-on-secondary-container'
+          }`}>
+            {latestOxygen?.isAlert ? (
+              <>
+                <AlertTriangle className="w-5 h-5 md:w-6 md:h-6 text-error" />
+                <span className="text-[10px] md:text-xs font-black uppercase tracking-widest">Revisar Oxigenación</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="text-secondary w-5 h-5 md:w-6 md:h-6" />
+                <span className="text-[10px] md:text-xs font-black uppercase tracking-widest">Nivel Excelente</span>
+              </>
+            )}
           </div>
         </div>
 
+        {/* Fila Inferior de Indicadores Dinámicos */}
         <div className="md:col-span-8 bg-surface-container-low rounded-[2rem] p-6 md:p-8 grid grid-cols-2 gap-3 md:gap-4 border border-outline-variant/10 shadow-sm">
           {[
-            { label: 'Temp', value: '36.6°C', icon: Thermometer, color: 'text-primary', bg: 'bg-primary/10' },
-            { label: 'Peso', value: '68.4 kg', icon: Weight, color: 'text-secondary', bg: 'bg-secondary/10' },
-            { label: 'Glucosa', value: '95 mg/dL', icon: Droplets, color: 'text-tertiary', bg: 'bg-tertiary/10' },
-            { label: 'Sueño', value: '7h 45m', icon: Moon, color: 'text-on-surface', bg: 'bg-surface-container-highest' },
+            { label: 'Temp', value: latestTemp ? `${latestTemp.value}°C` : '36.6°C', icon: Thermometer, color: latestTemp?.isAlert ? 'text-error' : 'text-primary', bg: latestTemp?.isAlert ? 'bg-error/10' : 'bg-primary/10' },
+            { label: 'Peso', value: latestWeight ? `${latestWeight.value} kg` : '68.4 kg', icon: Weight, color: 'text-secondary', bg: 'bg-secondary/10' },
+            { label: 'Glucosa', value: latestGlucose ? `${latestGlucose.value} mg/dL` : '95 mg/dL', icon: Droplets, color: latestGlucose?.isAlert ? 'text-error' : 'text-tertiary', bg: latestGlucose?.isAlert ? 'bg-error/10' : 'bg-tertiary/10' },
+            { label: 'Sueño', value: latestSleep ? `${latestSleep.value}h` : '7h 45m', icon: Moon, color: 'text-on-surface', bg: 'bg-surface-container-highest' },
           ].map((item) => (
             <motion.div 
               key={item.label}
               whileHover={{ y: -4 }}
-              className="bg-surface-container-lowest p-4 md:p-5 rounded-2xl flex items-center gap-3 md:gap-4 shadow-sm border border-outline-variant/10 cursor-pointer"
+              className={`bg-surface-container-lowest p-4 md:p-5 rounded-2xl flex items-center gap-3 md:gap-4 shadow-sm border cursor-pointer transition-colors ${
+                item.color.includes('text-error') ? 'border-error/30 bg-error/5' : 'border-outline-variant/10'
+              }`}
             >
               <div className={`${item.bg} p-2.5 md:p-3 rounded-xl ${item.color}`}>
                 <item.icon className="w-5 h-5 md:w-6 md:h-6" />
@@ -194,7 +258,7 @@ export const Vitals: React.FC = () => {
         </div>
       </div>
 
-      {/* History Section */}
+      {/* Historial Reciente */}
       <section className="space-y-4">
         <h3 className="font-lexend font-bold text-xl text-on-surface px-2">Historial Reciente</h3>
         <div className="space-y-3">
@@ -207,7 +271,7 @@ export const Vitals: React.FC = () => {
             vitals.map((vital, idx) => (
               <div key={vital.id || `vital-${idx}`} className="bg-surface-container-low p-4 rounded-2xl flex items-center justify-between border border-outline-variant/5">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${vital.isAlert ? 'bg-error/10 text-error' : 'bg-primary/10 text-primary'}`}>
                     {vital.type === 'bp' && <Activity className="w-5 h-5" />}
                     {vital.type === 'heart' && <Heart className="w-5 h-5" />}
                     {vital.type === 'oxygen' && <Wind className="w-5 h-5" />}
@@ -227,7 +291,7 @@ export const Vitals: React.FC = () => {
                          vital.type === 'glucose' ? 'Glucosa' : 'Sueño'}
                       </p>
                       {vital.isAlert && (
-                        <div className="bg-error/10 text-error p-1 rounded-full">
+                        <div className="bg-error/10 text-error p-1 rounded-full animate-pulse">
                           <AlertTriangle className="w-3 h-3" />
                         </div>
                       )}
@@ -241,7 +305,7 @@ export const Vitals: React.FC = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-lexend font-black text-lg text-primary">{vital.value}</p>
+                  <p className={`font-lexend font-black text-lg ${vital.isAlert ? 'text-error' : 'text-primary'}`}>{vital.value}</p>
                   <p className="text-[10px] font-bold text-outline uppercase tracking-widest">{vital.unit}</p>
                 </div>
               </div>
@@ -250,8 +314,8 @@ export const Vitals: React.FC = () => {
         </div>
       </section>
 
-    {/* Add Vital Modal */}
-    <AnimatePresence>
+      {/* Add Vital Modal */}
+      <AnimatePresence>
         {isAdding && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
             <motion.div 
