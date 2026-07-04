@@ -113,9 +113,14 @@ export const Dashboard: React.FC = () => {
   // Variables dinámicas basadas en los datos reales de la base de datos
   const latestBP = vitals.find(v => v.type === 'bp');
   const latestHeart = vitals.find(v => v.type === 'heart');
-  const latestAlert = vitals.find(v => v.isAlert);
+  const latestOxygen = vitals.find(v => v.type === 'oxygen');
+  const latestTemp = vitals.find(v => v.type === 'temp');
+  const latestGlucose = vitals.find(v => v.type === 'glucose');
+
+  // Corrección: Evaluamos únicamente el estado de alerta del ÚLTIMO registro de cada signo vital
+  const latestAlert = [latestBP, latestHeart, latestOxygen, latestTemp, latestGlucose].find(v => v && v.isAlert);
   
-  // Cálculo de inventario real (Medicación con menos de 5 unidades, por ejemplo)
+  // Cálculo de inventario real (Medicación con menos de 5 unidades)
   const lowInventoryMedsCount = meds.filter(m => (m.inventoryCount ?? 30) <= 5).length;
 
   const handleAddMed = async (e: React.FormEvent) => {
@@ -357,7 +362,7 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Inventory / Quick Info (Dinamizado) */}
+        {/* Inventory / Quick Info */}
         <div className={`rounded-[1.5rem] p-8 flex flex-col justify-between relative overflow-hidden group transition-colors duration-500 ${
           lowInventoryMedsCount > 0 ? 'bg-error-container text-on-error-container' : 'bg-tertiary-container text-on-tertiary-container'
         }`}>
@@ -460,4 +465,143 @@ export const Dashboard: React.FC = () => {
         )}
 
         {meds.length === 0 && (
-          <div className="bg-surface-container-low p-12 rounded-[1.5rem] text-center text-outline-variant border-2 border-dashed border-outline-
+          <div className="bg-surface-container-low p-12 rounded-[1.5rem] text-center text-outline-variant border-2 border-dashed border-outline-variant/20">
+            <Pill className="w-12 h-12 mx-auto mb-4 opacity-20" />
+            <p className="font-lexend font-medium">No hay medicamentos programados</p>
+          </div>
+        )}
+
+        {meds.map((med) => (
+          <motion.div 
+            key={med.id}
+            whileHover={{ scale: 1.01 }}
+            className={`bg-surface-container-low hover:bg-surface-container-lowest transition-all duration-300 rounded-[1.5rem] p-4 md:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 md:gap-6 border ${
+              (med.inventoryCount ?? 30) <= 5 ? 'border-error/20 bg-error/5' : 'border-transparent'
+            } ${med.status === 'completed' ? 'opacity-60' : ''}`}
+          >
+            <div className="flex items-center gap-4 md:gap-6">
+              <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform ${
+                med.status === 'completed' ? 'bg-secondary-container text-secondary' : 'bg-primary-fixed text-primary'
+              }`}>
+                <Pill className="w-6 h-6 md:w-8 md:h-8" />
+              </div>
+              <div className="min-w-0">
+                <p className={`font-lexend font-extrabold text-lg md:text-xl text-on-surface truncate ${med.status === 'completed' ? 'line-through' : ''}`}>
+                  {med.name}
+                </p>
+                <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-1">
+                  <span className="text-on-surface-variant font-medium text-xs md:text-sm flex items-center gap-1">
+                    {med.dosage}
+                  </span>
+                  <span className="hidden xs:block w-1 h-1 rounded-full bg-outline-variant" />
+                  <span className="text-primary font-bold text-xs md:text-sm flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 md:w-4 md:h-4" /> {med.time}
+                  </span>
+                  <span className="hidden xs:block w-1 h-1 rounded-full bg-outline-variant" />
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                    (med.inventoryCount ?? 30) <= 5 ? 'bg-error/10 text-error' : 'bg-surface-container-highest text-on-surface-variant'
+                  }`}>
+                    Stock: {med.inventoryCount ?? 30} u.
+                  </span>
+                  {med.status === 'completed' && med.lastAdministered && (
+                    <>
+                      <span className="hidden xs:block w-1 h-1 rounded-full bg-outline-variant" />
+                      <span className="text-secondary font-bold text-[11px] md:text-sm bg-secondary/10 px-3 py-1 rounded-full flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3 h-3 md:w-3.5 md:h-3.5" />
+                        Suministrado {formatTimestamp(med.lastAdministered)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between sm:justify-end gap-2 md:gap-3">
+              {profile?.role === 'caregiver' && (
+                <div className="flex items-center">
+                  {medToDelete === med.id ? (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="flex items-center gap-2 bg-error/10 p-1.5 rounded-2xl border border-error/20"
+                    >
+                      <button 
+                        onClick={() => handleDeleteMed(med.id)}
+                        className="px-4 py-2 bg-error text-on-error rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg shadow-error/20"
+                      >
+                        Eliminar
+                      </button>
+                      <button 
+                        onClick={() => setMedToDelete(null)}
+                        className="px-4 py-2 bg-surface-container-highest text-on-surface rounded-xl text-[10px] font-black uppercase tracking-wider"
+                      >
+                        No
+                      </button>
+                    </motion.div>
+                  ) : (
+                    <button 
+                      onClick={() => setMedToDelete(med.id)}
+                      className="p-2.5 md:p-3 text-error hover:bg-error/10 rounded-full transition-colors shrink-0"
+                      title="Eliminar medicamento"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+              )}
+              <button 
+                onClick={() => toggleMedStatus(med)}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-8 py-3 md:py-4 rounded-full font-lexend font-bold text-sm shadow-lg transition-all active:scale-95 ${
+                  med.status === 'completed' 
+                    ? 'bg-secondary/10 text-secondary' 
+                    : 'bg-secondary text-on-secondary shadow-secondary/20 hover:brightness-110'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
+                {med.status === 'completed' ? 'Registrado' : 'Administrar'}
+              </button>
+            </div>
+          </motion.div>
+        ))}
+      </section>
+
+      {/* Protocolo de Seguridad Dinamizado */}
+      <section className="mt-12 mb-8">
+        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary to-primary-container p-10 text-on-primary">
+          <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
+            <div className="flex-1">
+              <h4 className="font-lexend font-black text-3xl mb-4 leading-tight">Protocolo de Seguridad:<br/>Rutina Mañanera</h4>
+              <p className="font-body opacity-80 max-w-md mb-6 leading-relaxed">
+                Asegúrese de que el paciente haya consumido al menos 250 ml de agua antes de administrar Atorvastatina. Verifique la presión arterial si el pulso se siente irregular.
+              </p>
+              <div className="flex gap-4">
+                <div className={`backdrop-blur-md px-4 py-3 rounded-2xl border transition-colors ${
+                  latestBP?.isAlert ? 'bg-error/30 border-error animate-pulse' : 'bg-white/10 border-white/20'
+                }`}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Última Presión Arterial</p>
+                  <p className="font-lexend font-bold">{latestBP ? latestBP.value : '118 / 75'} mmHg</p>
+                </div>
+                <div className={`backdrop-blur-md px-4 py-3 rounded-2xl border transition-colors ${
+                  latestHeart?.isAlert ? 'bg-error/30 border-error animate-pulse' : 'bg-white/10 border-white/20'
+                }`}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Último Pulso</p>
+                  <p className="font-lexend font-bold">{latestHeart ? latestHeart.value : '72'} BPM</p>
+                </div>
+              </div>
+            </div>
+            <div className="w-64 h-64 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative overflow-hidden">
+              <img 
+                alt="Monitoreo de Salud" 
+                className="w-full h-full object-cover opacity-60 mix-blend-overlay" 
+                src="https://picsum.photos/seed/health/400/400" 
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-primary/20" />
+              <Activity className="absolute w-24 h-24 text-white/40 animate-pulse" />
+            </div>
+          </div>
+          <div className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-white/5 pointer-events-none" />
+        </div>
+      </section>
+    </div>
+  );
+};
