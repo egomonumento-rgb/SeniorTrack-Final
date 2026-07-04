@@ -4,7 +4,7 @@ import { collection, query, onSnapshot, orderBy, limit, addDoc, serverTimestamp,
 import { db, logout, handleFirestoreError, OperationType, formatTimestamp } from '../lib/firebase';
 import { Medication, VitalSign, GeofenceStatus, Appointment } from '../types';
 import { Pill, Activity, MapPin, AlertTriangle, CheckCircle2, Clock, ChevronRight, TrendingUp, Battery, PhoneCall, Plus, LogOut, ShieldCheck, Calendar as CalendarIcon, Heart, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { generateHealthSummary } from '../lib/gemini';
 import ReactMarkdown from 'react-markdown';
 
