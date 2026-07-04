@@ -20,6 +20,8 @@ export const Dashboard: React.FC = () => {
   const [newMed, setNewMed] = useState({ name: '', dosage: '', time: '', notes: '' });
   const [medToDelete, setMedToDelete] = useState<string | null>(null);
 
+  const seniorName = (profile?.role === 'family' ? linkedSeniorProfile?.seniorInfo?.name : profile?.seniorInfo?.name) || 'Paciente';
+
   useEffect(() => {
     if (!user || !profile) return;
 
@@ -36,8 +38,8 @@ export const Dashboard: React.FC = () => {
           if (med.status === 'completed' && med.lastAdministered) {
             const lastDate = med.lastAdministered.toDate();
             const isDifferentDay = lastDate.getDate() !== now.getDate() || 
-                                 lastDate.getMonth() !== now.getMonth() || 
-                                 lastDate.getFullYear() !== now.getFullYear();
+                                   lastDate.getMonth() !== now.getMonth() || 
+                                   lastDate.getFullYear() !== now.getFullYear();
             
             if (isDifferentDay) {
               try {
@@ -59,7 +61,7 @@ export const Dashboard: React.FC = () => {
       handleFirestoreError(error, OperationType.LIST, `users/${seniorId}/medications`);
     });
 
-    const vitalsQuery = query(collection(db, `users/${seniorId}/vitals`), orderBy('timestamp', 'desc'), limit(10));
+    const vitalsQuery = query(collection(db, `users/${seniorId}/vitals`), orderBy('timestamp', 'desc'), limit(30));
     const unsubVitals = onSnapshot(vitalsQuery, (snap) => {
       setVitals(snap.docs.map(d => ({ id: d.id, ...d.data() } as VitalSign)));
     }, (error) => {
@@ -92,14 +94,14 @@ export const Dashboard: React.FC = () => {
     const fetchSummary = async () => {
       if (vitals.length > 0 && !aiSummary) {
         setLoadingSummary(true);
-        const seniorName = profile?.role === 'family' ? linkedSeniorProfile?.seniorInfo?.name : profile?.seniorInfo?.name;
-        const summary = await generateHealthSummary(vitals, seniorName || 'el paciente');
+        const nameToUse = profile?.role === 'family' ? linkedSeniorProfile?.seniorInfo?.name : profile?.seniorInfo?.name;
+        const summary = await generateHealthSummary(vitals, nameToUse || 'el paciente');
         setAiSummary(summary);
         setLoadingSummary(false);
       }
     };
     fetchSummary();
-  }, [vitals, profile, linkedSeniorProfile]);
+  }, [vitals, profile, linkedSeniorProfile, aiSummary]);
 
   useEffect(() => {
     if (justRegistered && profile?.role === 'caregiver') {
@@ -107,6 +109,14 @@ export const Dashboard: React.FC = () => {
       window.location.href = '/profile';
     }
   }, [justRegistered, profile, setJustRegistered]);
+
+  // Variables dinámicas basadas en los datos reales de la base de datos
+  const latestBP = vitals.find(v => v.type === 'bp');
+  const latestHeart = vitals.find(v => v.type === 'heart');
+  const latestAlert = vitals.find(v => v.isAlert);
+  
+  // Cálculo de inventario real (Medicación con menos de 5 unidades, por ejemplo)
+  const lowInventoryMedsCount = meds.filter(m => (m.inventoryCount ?? 30) <= 5).length;
 
   const handleAddMed = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,20 +136,9 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  if (profile?.role === 'family' && profile.linkedSeniorId && !linkedSeniorProfile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-on-surface-variant font-medium">Cargando información del paciente...</p>
-        </div>
-      </div>
-    );
-  }
-
   const toggleMedStatus = async (med: Medication) => {
     if (!user || !profile) return;
-    if (profile.role === 'family') return; // Family cannot toggle status
+    if (profile.role === 'family') return;
 
     const seniorId = user.uid;
     const medRef = doc(db, `users/${seniorId}/medications/${med.id}`);
@@ -147,7 +146,8 @@ export const Dashboard: React.FC = () => {
     try {
       await updateDoc(medRef, { 
         status: newStatus,
-        lastAdministered: newStatus === 'completed' ? serverTimestamp() : null
+        lastAdministered: newStatus === 'completed' ? serverTimestamp() : null,
+        inventoryCount: newStatus === 'completed' ? Math.max((med.inventoryCount ?? 30) - 1, 0) : (med.inventoryCount ?? 30)
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${seniorId}/medications/${med.id}`);
@@ -168,7 +168,6 @@ export const Dashboard: React.FC = () => {
   };
 
   const isUnsafe = geofence?.status === 'unsafe';
-  const latestAlert = vitals.find(v => v.isAlert);
 
   const handleLogout = async () => {
     await logout();
@@ -214,7 +213,7 @@ export const Dashboard: React.FC = () => {
               </div>
               <div>
                 <h2 className="font-lexend font-black text-on-error-container text-xl leading-tight">
-                  ALERTA DE SALUD
+                  ALERTA DE SALUD DETECTADA
                 </h2>
                 <p className="text-on-error-container opacity-80 font-medium">
                   {latestAlert.alertMessage}
@@ -223,7 +222,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <button 
               onClick={() => window.location.href = '/vitals'}
-              className="bg-error text-on-primary px-8 py-4 rounded-full font-lexend font-black text-sm tracking-wide active:scale-95 transition-all flex items-center gap-2"
+              className="bg-error text-on-primary px-8 py-4 rounded-full font-lexend font-black text-sm tracking-wide active:scale-95 transition-all flex items-center gap-2 shadow-md"
             >
               VER DETALLES
             </button>
@@ -247,7 +246,7 @@ export const Dashboard: React.FC = () => {
                 {geofence?.statusText === 'Fuera de zona' ? 'ALERTA: Perímetro Traspasado' : `ALERTA: ${geofence?.statusText || 'Fuera de Perímetro'}`}
               </h2>
               <p className="text-on-error-container opacity-80 font-medium">
-                {profile?.role === 'family' ? linkedSeniorProfile?.seniorInfo?.name : profile?.seniorInfo?.name} está {geofence?.statusText?.toLowerCase() || 'fuera de la zona segura'}.
+                {seniorName} está {geofence?.statusText?.toLowerCase() || 'fuera de la zona segura'}.
               </p>
             </div>
           </div>
@@ -285,11 +284,15 @@ export const Dashboard: React.FC = () => {
             <div className="flex flex-wrap gap-4">
               <div className="flex items-center gap-2 bg-secondary-container/30 px-4 py-2 rounded-full border border-secondary/10">
                 <CheckCircle2 className="text-secondary w-4 h-4" />
-                <span className="text-on-secondary-container font-semibold text-xs">Estado Estable</span>
+                <span className="text-on-secondary-container font-semibold text-xs">
+                  {latestAlert ? 'Revisión Requerida' : 'Estado Estable'}
+                </span>
               </div>
               <div className="flex items-center gap-2 bg-tertiary-fixed px-4 py-2 rounded-full border border-tertiary/10">
                 <Pill className="text-tertiary w-4 h-4" />
-                <span className="text-on-tertiary-fixed-variant font-semibold text-xs">Medicamentos al día</span>
+                <span className="text-on-tertiary-fixed-variant font-semibold text-xs">
+                  {lowInventoryMedsCount > 0 ? 'Revisar Inventarios' : 'Medicamentos al día'}
+                </span>
               </div>
             </div>
             <button 
@@ -354,16 +357,22 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Inventory / Quick Info */}
-        <div className="bg-tertiary-container rounded-[1.5rem] p-8 text-on-tertiary-container flex flex-col justify-between relative overflow-hidden group">
+        {/* Inventory / Quick Info (Dinamizado) */}
+        <div className={`rounded-[1.5rem] p-8 flex flex-col justify-between relative overflow-hidden group transition-colors duration-500 ${
+          lowInventoryMedsCount > 0 ? 'bg-error-container text-on-error-container' : 'bg-tertiary-container text-on-tertiary-container'
+        }`}>
           <div className="absolute -right-8 -top-8 w-32 h-32 bg-white/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
           <Pill className="w-12 h-12 mb-4 opacity-80" />
           <div>
-            <p className="font-lexend text-5xl font-black mb-1">04</p>
-            <p className="font-body font-medium text-sm leading-tight opacity-90">Medicamentos con bajo inventario</p>
+            <p className="font-lexend text-5xl font-black mb-1">
+              {String(lowInventoryMedsCount).padStart(2, '0')}
+            </p>
+            <p className="font-body font-medium text-sm leading-tight opacity-90">
+              {lowInventoryMedsCount === 1 ? 'Medicamento con bajo inventario (5 o menos)' : 'Medicamentos con bajo inventario (5 o menos)'}
+            </p>
           </div>
           <button className="mt-6 text-xs font-bold uppercase tracking-widest bg-white/10 hover:bg-white/20 transition-colors py-3 rounded-xl border border-white/10">
-            Reponer Todo
+            Revisar Inventarios
           </button>
         </div>
       </div>
@@ -451,133 +460,4 @@ export const Dashboard: React.FC = () => {
         )}
 
         {meds.length === 0 && (
-          <div className="bg-surface-container-low p-12 rounded-[1.5rem] text-center text-outline-variant border-2 border-dashed border-outline-variant/20">
-            <Pill className="w-12 h-12 mx-auto mb-4 opacity-20" />
-            <p className="font-lexend font-medium">No hay medicamentos programados</p>
-          </div>
-        )}
-
-        {meds.map((med) => (
-          <motion.div 
-            key={med.id}
-            whileHover={{ scale: 1.01 }}
-            className={`bg-surface-container-low hover:bg-surface-container-lowest transition-all duration-300 rounded-[1.5rem] p-4 md:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 md:gap-6 border border-transparent hover:shadow-xl hover:shadow-primary/5 ${
-              med.status === 'completed' ? 'opacity-60' : ''
-            }`}
-          >
-            <div className="flex items-center gap-4 md:gap-6">
-              <div className={`w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center shrink-0 transition-transform ${
-                med.status === 'completed' ? 'bg-secondary-container text-secondary' : 'bg-primary-fixed text-primary'
-              }`}>
-                <Pill className="w-6 h-6 md:w-8 md:h-8" />
-              </div>
-              <div className="min-w-0">
-                <p className={`font-lexend font-extrabold text-lg md:text-xl text-on-surface truncate ${med.status === 'completed' ? 'line-through' : ''}`}>
-                  {med.name}
-                </p>
-                <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-1">
-                  <span className="text-on-surface-variant font-medium text-xs md:text-sm flex items-center gap-1">
-                    {med.dosage}
-                  </span>
-                  <span className="hidden xs:block w-1 h-1 rounded-full bg-outline-variant" />
-                  <span className="text-primary font-bold text-xs md:text-sm flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 md:w-4 md:h-4" /> {med.time}
-                  </span>
-                  {med.status === 'completed' && med.lastAdministered && (
-                    <>
-                      <span className="hidden xs:block w-1 h-1 rounded-full bg-outline-variant" />
-                      <span className="text-secondary font-bold text-[11px] md:text-sm bg-secondary/10 px-3 py-1 rounded-full flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                        Suministrado {formatTimestamp(med.lastAdministered)}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between sm:justify-end gap-2 md:gap-3">
-              {profile?.role === 'caregiver' && (
-                <div className="flex items-center">
-                  {medToDelete === med.id ? (
-                    <motion.div 
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="flex items-center gap-2 bg-error/10 p-1.5 rounded-2xl border border-error/20"
-                    >
-                      <button 
-                        onClick={() => handleDeleteMed(med.id)}
-                        className="px-4 py-2 bg-error text-on-error rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg shadow-error/20"
-                      >
-                        Eliminar
-                      </button>
-                      <button 
-                        onClick={() => setMedToDelete(null)}
-                        className="px-4 py-2 bg-surface-container-highest text-on-surface rounded-xl text-[10px] font-black uppercase tracking-wider"
-                      >
-                        No
-                      </button>
-                    </motion.div>
-                  ) : (
-                    <button 
-                      onClick={() => setMedToDelete(med.id)}
-                      className="p-2.5 md:p-3 text-error hover:bg-error/10 rounded-full transition-colors shrink-0"
-                      title="Eliminar medicamento"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  )}
-                </div>
-              )}
-              <button 
-                onClick={() => toggleMedStatus(med)}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 md:px-8 py-3 md:py-4 rounded-full font-lexend font-bold text-sm shadow-lg transition-all active:scale-95 ${
-                  med.status === 'completed' 
-                    ? 'bg-secondary/10 text-secondary' 
-                    : 'bg-secondary text-on-secondary shadow-secondary/20 hover:brightness-110'
-                }`}
-              >
-                <CheckCircle2 className="w-4 h-4 md:w-5 md:h-5" />
-                {med.status === 'completed' ? 'Registrado' : 'Administrar'}
-              </button>
-            </div>
-          </motion.div>
-        ))}
-      </section>
-
-      {/* Safety Protocol Card */}
-      <section className="mt-12 mb-8">
-        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-primary to-primary-container p-10 text-on-primary">
-          <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
-            <div className="flex-1">
-              <h4 className="font-lexend font-black text-3xl mb-4 leading-tight">Protocolo de Seguridad:<br/>Rutina Mañanera</h4>
-              <p className="font-body opacity-80 max-w-md mb-6 leading-relaxed">
-                Asegúrese de que el paciente haya consumido al menos 250 ml de agua antes de administrar Atorvastatina. Verifique la presión arterial si el pulso se siente irregular.
-              </p>
-              <div className="flex gap-4">
-                <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/20">
-                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Última Presión Arterial</p>
-                  <p className="font-lexend font-bold">128 / 82</p>
-                </div>
-                <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/20">
-                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">Pulso</p>
-                  <p className="font-lexend font-bold">72 BPM</p>
-                </div>
-              </div>
-            </div>
-            <div className="w-64 h-64 rounded-full bg-white/5 border border-white/10 flex items-center justify-center relative overflow-hidden">
-              <img 
-                alt="Monitoreo de Salud" 
-                className="w-full h-full object-cover opacity-60 mix-blend-overlay" 
-                src="https://picsum.photos/seed/health/400/400" 
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute inset-0 bg-primary/20" />
-              <Activity className="absolute w-24 h-24 text-white/40 animate-pulse" />
-            </div>
-          </div>
-          <div className="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-white/5 pointer-events-none" />
-        </div>
-      </section>
-    </div>
-  );
-};
+          <div className="bg-surface-container-low p-12 rounded-[1.5rem] text-center text-outline-variant border-2 border-dashed border-outline-
