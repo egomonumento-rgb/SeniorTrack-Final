@@ -50,9 +50,17 @@ export const Calendar: React.FC = () => {
     if (!user || !profile || profile.role === 'family') return;
 
     try {
+      // Corrección de zona horaria local para evitar el desfase de un día menos
+      const [yearStr, monthStr, dayStr] = newAppt.date.split('-');
+      const localDate = new Date(
+        parseInt(yearStr),
+        parseInt(monthStr) - 1,
+        parseInt(dayStr)
+      );
+
       await addDoc(collection(db, `users/${user.uid}/appointments`), {
         ...newAppt,
-        date: Timestamp.fromDate(new Date(newAppt.date)),
+        date: Timestamp.fromDate(localDate),
         createdAt: serverTimestamp()
       });
       setIsAdding(false);
